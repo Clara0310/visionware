@@ -24,4 +24,5 @@ fi
 # 啟動 Python HTTP 伺服器
 echo "✅ 伺服器已啟動！請在瀏覽器中查看。"
 echo "📝 按 Ctrl+C 停止伺服器"
+cd "$DIR"
 python3 -m http.server $PORT

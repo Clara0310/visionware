@@ -73,14 +73,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'visionwave_test_sitting_alert') {
             console.log('🧪 收到測試久坐警示觸發');
             // 立即觸發久坐警示（不論實際久坐時間）
-            const testMinutes = Math.floor((state.sittingTotalDuration || 0) / 60000) || 35; // 預設顯示35分鐘
+            const testMinutes = Math.floor((state.sittingTotalDuration || 0) / 60000) || 30; // 預設顯示30分鐘
             const alertMessage = `您已經坐著 ${testMinutes} 分鐘了，建議起身休息、伸展一下。`;
 
             // 顯示頁面內警示
-            showAlert('warning', '久坐提醒 (測試)', alertMessage, 'sitting-alert-test');
+            showAlert('warning', '久坐提醒', alertMessage, 'sitting-alert-test');
 
             // 顯示瀏覽器原生通知
-            showBrowserNotification('⏰ 久坐提醒 (測試)', alertMessage, 'sitting');
+            showBrowserNotification('⏰ 久坐提醒', alertMessage, 'sitting');
 
             // 清除測試標誌
             localStorage.removeItem('visionwave_test_sitting_alert');
