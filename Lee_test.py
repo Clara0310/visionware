@@ -205,14 +205,17 @@ class RadarStateTracker:
         else:
             self.count_sitting_false += 1
 
+        # return {
+        #     "distance_safe": distance_safe,
+        #     "sitting": sitting,
+        #     "avg_residual": avg_val,
+        #     "window_avg": float(window_avg),
+        #     "window_std": float(window_std)
+        # }
         return {
             "distance_safe": distance_safe,
             "sitting": sitting,
-            "avg_residual": avg_val,
-            "window_avg": float(window_avg),
-            "window_std": float(window_std)
         }
-
 
 
 # ===============================================
