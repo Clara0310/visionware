@@ -4,6 +4,9 @@
 
 // Global State
 const state = {
+    // Device connection
+    deviceConnected: false,        // true = 雷達設備已連線, false = 未連線
+
     // Backend data
     distance_safe: true,   // true = 距離安全 (>= 40cm), false = 距離過近 (< 40cm)
     sitting: false,        // true = 偵測到坐著, false = 未偵測到（注意：這不是久坐判斷）
@@ -35,8 +38,8 @@ const state = {
 
 // Configuration
 const CONFIG = {
-    // API Mode: 'CONTROLLER' (遙控器), 'SIMULATED' (模擬), 'FUNCTION' (自定義函數), or URL string (真實API)
-    API_ENDPOINT: 'CONTROLLER',
+    // API 端點（後端 Flask 伺服器）
+    API_ENDPOINT: '/api/status',
     POLLING_INTERVAL: 1000, // 1 second (更頻繁的更新以獲得更好的即時性)
 
     // Distance alert thresholds
@@ -104,109 +107,89 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initializeChart();
     requestNotificationPermission();
-    startMonitoring();
+
+    // 檢查設備連線狀態後再啟動監測
+    checkDeviceConnection().then(() => {
+        startMonitoring();
+    });
+
     startTimer();
 
-    // 輪詢測試警示 API（支援跨裝置）
-    setInterval(async () => {
-        try {
-            const response = await fetch(window.location.origin + '/api/test-alert');
-            if (response.ok) {
-                const data = await response.json();
-                if (data.triggered) {
-                    console.log('🧪 收到測試久坐警示觸發');
-                    const testMinutes = Math.floor((state.sittingTotalDuration || 0) / 60000) || 30;
-                    const alertMessage = `您已經坐著 ${testMinutes} 分鐘了，建議起身休息、伸展一下。`;
-
-                    // 先調用系統級通知（OS 處理較慢，先發送）
-                    showBrowserNotification('⏰ 久坐提醒', alertMessage, 'sitting');
-
-                    // 顯示頁面內警示
-                    showAlert('warning', '久坐提醒', alertMessage, 'sitting-alert-test');
-
-                    // 播放提醒音效
-                    playAlertSound('sitting');
-                }
-            }
-        } catch (error) {
-            // 靜默失敗，避免 console 洗版
-        }
-    }, 2000);
+    // 每 10 秒檢查一次設備連線狀態
+    setInterval(checkDeviceConnection, 10000);
 });
 
 // =====================================
-// Simulated API
+// 設備連線檢測
 // =====================================
 
-function simulateAPIResponse() {
-    // Simulate realistic behavior patterns
-    const now = Date.now();
+async function checkDeviceConnection() {
+    try {
+        const response = await fetch('/api/info');
+        if (!response.ok) throw new Error('API unreachable');
 
-    // Simulate distance safe most of the time (90% chance)
-    const distance_safe = Math.random() > 0.1;
+        const info = await response.json();
+        const wasConnected = state.deviceConnected;
+        state.deviceConnected = info.radar_initialized === true;
 
-    // Simulate sitting pattern - more likely to be sitting during work hours
-    const sitting = Math.random() > 0.3;
+        updateDeviceUI();
 
-    return {
-        distance_safe: distance_safe,  // true = 距離安全, false = 距離過近
-        sitting: sitting               // true = 偵測到坐著, false = 未偵測到
-    };
+        // 狀態變化時印出 log
+        if (wasConnected !== state.deviceConnected) {
+            if (state.deviceConnected) {
+                console.log('✅ 雷達設備已連線');
+            } else {
+                console.log('⚠️ 雷達設備未連線');
+            }
+        }
+    } catch (error) {
+        // API 無法連線時，視為設備未連線
+        state.deviceConnected = false;
+        updateDeviceUI();
+    }
 }
 
-async function fetchHealthData() {
-    if (CONFIG.API_ENDPOINT === 'CONTROLLER') {
-        // Read from API server (支援跨裝置)
-        try {
-            const response = await fetch(window.location.origin + '/api/status');
-            if (response.ok) {
-                return await response.json();
-            }
-            return { distance_safe: true, sitting: false };
-        } catch (error) {
-            console.error('❌ 讀取 API 資料失敗:', error);
-            return { distance_safe: true, sitting: false };
-        }
-    } else if (CONFIG.API_ENDPOINT === 'SIMULATED') {
-        // Return simulated data
-        return new Promise(resolve => {
-            setTimeout(() => {
-                resolve(simulateAPIResponse());
-            }, 100);
-        });
-    } else if (CONFIG.API_ENDPOINT === 'FUNCTION') {
-        // Call custom function directly
-        try {
-            // 假設您的函數掛載在 window 物件上，例如 window.getSensorData()
-            // 請將 getSensorData 替換為您實際的函數名稱
-            if (typeof window.getSensorData === 'function') {
-                const data = await window.getSensorData();
-                return data;
-            } else {
-                console.warn('⚠️ 找不到 window.getSensorData 函數，請確認已定義');
-                // 回傳預設安全狀態避免報錯
-                return {
-                    distance_safe: true,
-                    sitting: false
-                };
-            }
-        } catch (error) {
-            console.error('❌ 呼叫自定義函數失敗:', error);
-            return null;
-        }
+function updateDeviceUI() {
+    const banner = document.getElementById('device-banner');
+    const dashboard = document.getElementById('dashboard-section');
+    const statusBadge = document.getElementById('system-status');
+
+    if (state.deviceConnected) {
+        // 設備已連線
+        banner.classList.remove('visible');
+        dashboard.classList.remove('dashboard-disabled');
+        statusBadge.innerHTML = `
+            <span class="status-dot"></span>
+            <span class="status-text">系統運作中</span>
+        `;
+        statusBadge.querySelector('.status-dot').style.background = '';
+        statusBadge.querySelector('.status-text').style.color = '';
     } else {
-        // Actual API call
-        try {
-            const response = await fetch(CONFIG.API_ENDPOINT);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return await response.json();
-        } catch (error) {
-            console.error('❌ API 呼叫失敗:', error);
-            showSystemError();
-            return null;
+        // 設備未連線
+        banner.classList.add('visible');
+        dashboard.classList.add('dashboard-disabled');
+        statusBadge.innerHTML = `
+            <span class="status-dot" style="background: #f59e0b;"></span>
+            <span class="status-text" style="color: #f59e0b;">設備未連線</span>
+        `;
+    }
+}
+
+// =====================================
+// API 資料取得
+// =====================================
+
+async function fetchHealthData() {
+    try {
+        const response = await fetch(CONFIG.API_ENDPOINT);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+        return await response.json();
+    } catch (error) {
+        console.error('❌ API 呼叫失敗:', error);
+        showSystemError();
+        return null;
     }
 }
 
@@ -230,6 +213,11 @@ async function checkHealth() {
     const data = await fetchHealthData();
 
     if (!data) return;
+
+    // 設備未連線時，不處理監測邏輯（避免誤觸發警示）
+    if (!state.deviceConnected) {
+        return;
+    }
 
     state.totalChecks++;
     const now = Date.now();
@@ -906,4 +894,4 @@ function showSystemError() {
 window.dismissAlert = dismissAlert;
 
 console.log('✅ VisionWave Guardian 已就緒');
-console.log('📊 使用模擬資料模式:', CONFIG.API_ENDPOINT === 'SIMULATED');
+console.log('📊 API 端點:', CONFIG.API_ENDPOINT);
