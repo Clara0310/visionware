@@ -2,6 +2,9 @@
 // VisionWave API Controller
 // =====================================
 
+// API base URL (auto-detect: same origin as the page)
+const API_BASE = window.location.origin;
+
 // State Management
 const state = {
     distance_safe: true,  // true = 距離安全 (>= 40cm), false = 距離過近 (< 40cm)
@@ -11,8 +14,9 @@ const state = {
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🎮 VisionWave API 遙控器啟動');
+    console.log('📡 API 端點:', API_BASE + '/api/status');
 
-    // Load saved state from localStorage
+    // Load saved state from API server
     loadState();
 
     // Set up event listeners
@@ -20,35 +24,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update UI
     updateUI();
-
-    // Save initial state
-    saveState();
 });
 
-// Load state from localStorage
-function loadState() {
-    const savedState = localStorage.getItem('visionwave_api_state');
-    if (savedState) {
-        try {
-            const parsed = JSON.parse(savedState);
-            state.distance_safe = parsed.distance_safe;
-            state.sitting = parsed.sitting;
-            console.log('📥 已載入儲存的狀態:', state);
-        } catch (error) {
-            console.error('❌ 載入狀態失敗:', error);
+// Load state from API server
+async function loadState() {
+    try {
+        const response = await fetch(API_BASE + '/api/status');
+        if (response.ok) {
+            const data = await response.json();
+            state.distance_safe = data.distance_safe;
+            state.sitting = data.sitting;
+            updateUI();
+            console.log('📥 已從伺服器載入狀態:', state);
         }
+    } catch (error) {
+        console.error('❌ 載入狀態失敗:', error);
     }
 }
 
-// Save state to localStorage
-function saveState() {
-    const stateJson = JSON.stringify(state);
-    localStorage.setItem('visionwave_api_state', stateJson);
-
-    // Also save timestamp
-    localStorage.setItem('visionwave_api_timestamp', Date.now().toString());
-
-    console.log('💾 已儲存狀態:', state);
+// Save state to API server
+async function saveState() {
+    try {
+        const response = await fetch(API_BASE + '/api/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(state)
+        });
+        if (response.ok) {
+            console.log('💾 已儲存狀態到伺服器:', state);
+        }
+    } catch (error) {
+        console.error('❌ 儲存狀態失敗:', error);
+    }
     updateUI();
 }
 
@@ -114,14 +121,13 @@ function setScenario(scenario) {
             break;
 
         case 'distance-warning':
-            // 距離警告：距離過近，未久坐
+            // 距離警告：距離過近（需要偵測到人才有效）
             state.distance_safe = false;
-            state.sitting = false;
+            state.sitting = true;
             break;
 
         case 'sitting':
-            // 久坐：安全距離，正在久坐
-            state.distance_safe = true;
+            // 久坐：只設定有人坐著，不改變視距狀態
             state.sitting = true;
             break;
 
@@ -133,6 +139,14 @@ function setScenario(scenario) {
     }
 
     saveState();
+
+    // 久坐場景同時觸發立即警示
+    if (scenario === 'sitting') {
+        fetch(API_BASE + '/api/test-alert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
 
     // Visual feedback
     const btn = event.target.closest('.action-btn');
@@ -149,34 +163,20 @@ function setScenario(scenario) {
 // Make setScenario globally accessible
 window.setScenario = setScenario;
 
-// Test alert trigger
+// Test alert trigger (透過 API 跨裝置)
 function triggerTestAlert() {
-    // 設定測試標誌讓主頁面立即觸發久坐警示
-    localStorage.setItem('visionwave_test_sitting_alert', Date.now().toString());
-
-    // Visual feedback
-    const btn = event.target.closest('.action-btn');
-    if (btn) {
-        btn.style.transform = 'scale(0.95)';
-        setTimeout(() => {
-            btn.style.transform = '';
-        }, 150);
-    }
-
-    console.log('🧪 已觸發測試久坐警示');
+    fetch(API_BASE + '/api/test-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }).then(() => {
+        console.log('🧪 已觸發測試久坐警示');
+    }).catch(error => {
+        console.error('❌ 觸發測試警示失敗:', error);
+    });
 }
 
 // Make triggerTestAlert globally accessible
 window.triggerTestAlert = triggerTestAlert;
-
-// Monitor for changes from other tabs (if needed)
-window.addEventListener('storage', (e) => {
-    if (e.key === 'visionwave_api_state') {
-        loadState();
-        updateUI();
-        console.log('🔄 從其他分頁同步狀態');
-    }
-});
 
 console.log('✅ VisionWave API 遙控器準備就緒');
 console.log('💡 開啟主監測頁面 (index.html) 進行測試');

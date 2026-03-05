@@ -107,27 +107,31 @@ document.addEventListener('DOMContentLoaded', () => {
     startMonitoring();
     startTimer();
 
-    // 監聽測試警示觸發器
-    window.addEventListener('storage', (e) => {
-        if (e.key === 'visionwave_test_sitting_alert') {
-            console.log('🧪 收到測試久坐警示觸發');
-            // 立即觸發久坐警示（不論實際久坐時間）
-            const testMinutes = Math.floor((state.sittingTotalDuration || 0) / 60000) || 30; // 預設顯示30分鐘
-            const alertMessage = `您已經坐著 ${testMinutes} 分鐘了，建議起身休息、伸展一下。`;
+    // 輪詢測試警示 API（支援跨裝置）
+    setInterval(async () => {
+        try {
+            const response = await fetch(window.location.origin + '/api/test-alert');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.triggered) {
+                    console.log('🧪 收到測試久坐警示觸發');
+                    const testMinutes = Math.floor((state.sittingTotalDuration || 0) / 60000) || 30;
+                    const alertMessage = `您已經坐著 ${testMinutes} 分鐘了，建議起身休息、伸展一下。`;
 
-            // 播放提醒音效
-            playAlertSound('sitting');
+                    // 先調用系統級通知（OS 處理較慢，先發送）
+                    showBrowserNotification('⏰ 久坐提醒', alertMessage, 'sitting');
 
-            // 顯示頁面內警示
-            showAlert('warning', '久坐提醒', alertMessage, 'sitting-alert-test');
+                    // 顯示頁面內警示
+                    showAlert('warning', '久坐提醒', alertMessage, 'sitting-alert-test');
 
-            // 顯示瀏覽器原生通知
-            showBrowserNotification('⏰ 久坐提醒', alertMessage, 'sitting');
-
-            // 清除測試標誌
-            localStorage.removeItem('visionwave_test_sitting_alert');
+                    // 播放提醒音效
+                    playAlertSound('sitting');
+                }
+            }
+        } catch (error) {
+            // 靜默失敗，避免 console 洗版
         }
-    });
+    }, 2000);
 });
 
 // =====================================
@@ -152,24 +156,16 @@ function simulateAPIResponse() {
 
 async function fetchHealthData() {
     if (CONFIG.API_ENDPOINT === 'CONTROLLER') {
-        // Read from controller page via localStorage
+        // Read from API server (支援跨裝置)
         try {
-            const stateJson = localStorage.getItem('visionwave_api_state');
-            if (stateJson) {
-                return JSON.parse(stateJson);
-            } else {
-                // Default state if controller hasn't been opened yet
-                return {
-                    distance_safe: true,
-                    sitting: false
-                };
+            const response = await fetch(window.location.origin + '/api/status');
+            if (response.ok) {
+                return await response.json();
             }
+            return { distance_safe: true, sitting: false };
         } catch (error) {
-            console.error('❌ 讀取遙控器資料失敗:', error);
-            return {
-                distance_safe: true,
-                sitting: false
-            };
+            console.error('❌ 讀取 API 資料失敗:', error);
+            return { distance_safe: true, sitting: false };
         }
     } else if (CONFIG.API_ENDPOINT === 'SIMULATED') {
         // Return simulated data
@@ -545,28 +541,28 @@ function getNotificationIcon(type) {
 function showDistanceAlert() {
     const alertMessage = '您與螢幕的距離過近！請保持至少 40 公分的安全距離，以保護視力健康。';
 
-    // 播放警示音效
-    playAlertSound('distance');
+    // 先調用系統級通知（OS 處理較慢，先發送）
+    showBrowserNotification('⚠️ 視距警示', alertMessage, 'distance');
 
     // 顯示頁面內警示
     showAlert('danger', '視距警示', alertMessage, 'distance-alert');
 
-    // 顯示瀏覽器原生通知
-    showBrowserNotification('⚠️ 視距警示', alertMessage, 'distance');
+    // 播放警示音效
+    playAlertSound('distance');
 }
 
 function showSittingAlert() {
     const minutes = Math.floor(state.sittingTotalDuration / 60000);
     const alertMessage = `您已經坐著 ${minutes} 分鐘了，建議起身休息、伸展一下。`;
 
-    // 播放提醒音效
-    playAlertSound('sitting');
+    // 先調用系統級通知（OS 處理較慢，先發送）
+    showBrowserNotification('⏰ 久坐提醒', alertMessage, 'sitting');
 
     // 顯示頁面內警示
     showAlert('warning', '久坐提醒', alertMessage, 'sitting-alert');
 
-    // 顯示瀏覽器原生通知
-    showBrowserNotification('⏰ 久坐提醒', alertMessage, 'sitting');
+    // 播放提醒音效
+    playAlertSound('sitting');
 }
 
 
